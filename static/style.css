@@ -64,8 +64,18 @@ main {
 .card h2 { margin-top: 0; font-size: 1.05rem; }
 
 #upload-form { display: flex; gap: 0.75rem; align-items: center; }
-#login-form, #register-form { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem; }
+#login-form { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem; }
 #login-form input, #register-form input { padding: 0.45rem 0.6rem; border: 1px solid var(--border); border-radius: 6px; }
+#register-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 0.6rem 0.75rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+#register-form input, #register-form .field { width: 100%; }
+#register-form button { grid-column: 3; grid-row: 1 / span 2; height: 100%; }
+#register-form .field { display: flex; flex-direction: column; gap: 0.2rem; }
 .hint { font-size: 0.8rem; color: var(--text-muted); }
 .hint-ok { color: var(--success); }
 .hint-taken { color: var(--danger); }

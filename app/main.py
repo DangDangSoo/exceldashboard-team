@@ -2,6 +2,7 @@
 FastAPI 라우터. 이음새 원칙 #1: 여기는 core 모듈 호출만 하고,
 파싱/타입판별/통계 로직 자체는 절대 여기 두지 않는다.
 """
+import sqlite3
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -66,7 +67,9 @@ async def unhandled_error_handler(request: Request, exc: Exception):
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    # app.js 수정시각을 캐시무효화 쿼리로 써서, 배포할 때마다 브라우저가 항상 최신 JS를 받게 한다.
+    asset_version = int((Path("static") / "app.js").stat().st_mtime)
+    return templates.TemplateResponse("index.html", {"request": request, "asset_version": asset_version})
 
 
 def require_login(session_token: str | None = Cookie(default=None)) -> dict:
@@ -118,7 +121,11 @@ async def register(body: RegisterRequest, response: Response):
     user_id = str(uuid.uuid4())
     password_hash = auth.hash_password(body.password)
     created_at = datetime.now(timezone.utc).isoformat()
-    db.create_user(user_id, body.username, password_hash, created_at)
+    try:
+        db.create_user(user_id, body.username, password_hash, created_at)
+    except sqlite3.IntegrityError:
+        # 사전 체크와 INSERT 사이의 경쟁 상태(동시 가입 요청) 방어선.
+        raise AppError("이미 사용 중인 아이디입니다.", status_code=400)
 
     _issue_session(response, user_id)  # 가입 직후 바로 로그인 상태로 만든다.
     return UserPublic(id=user_id, username=body.username)
