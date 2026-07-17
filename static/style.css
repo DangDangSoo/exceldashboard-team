@@ -1,0 +1,203 @@
+:root {
+  color-scheme: light dark;
+  --border: #d8d8dc;
+  --bg-card: #ffffff;
+  --bg-page: #f5f6f8;
+  --text-muted: #6b6f76;
+  --accent: #3a6df0;
+  --danger: #d64545;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+  background: var(--bg-page);
+  color: #1c1e21;
+  margin: 0;
+  padding: 0 1.5rem 3rem;
+}
+
+header {
+  padding: 2rem 0 1rem;
+}
+
+h1 { margin: 0; font-size: 1.5rem; }
+.badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  vertical-align: middle;
+  margin-left: 0.5rem;
+}
+.subtitle { color: var(--text-muted); margin-top: 0.4rem; }
+
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+}
+.card h2 { margin-top: 0; font-size: 1.05rem; }
+
+#upload-form { display: flex; gap: 0.75rem; align-items: center; }
+button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 0.55rem 1.2rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.hidden { display: none !important; }
+
+.error-banner {
+  background: #fdecec;
+  color: var(--danger);
+  border: 1px solid #f3b8b8;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.88rem;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  white-space: nowrap;
+}
+th { background: #f0f1f4; }
+
+.table-scroll { overflow-x: auto; }
+
+#dataset-list-table td input[type="text"] {
+  width: 160px;
+  margin-right: 0.4rem;
+}
+
+select { padding: 0.2rem 0.4rem; }
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+.summary-item {
+  background: var(--bg-page);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+}
+.summary-item .label { font-size: 0.75rem; color: var(--text-muted); }
+.summary-item .value { font-size: 1.15rem; font-weight: 600; }
+
+.stats-block { margin-bottom: 1.25rem; }
+.stats-block h3 { font-size: 0.92rem; margin-bottom: 0.4rem; }
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.chip-button {
+  background: var(--bg-page);
+  color: inherit;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.82rem;
+}
+.chip-button:hover { border-color: var(--accent); }
+
+.builder-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+  margin-bottom: 0.75rem;
+}
+.builder-row label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  gap: 0.2rem;
+}
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+.chart-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.chart-card-title { font-weight: 600; font-size: 0.85rem; }
+.chart-card img { width: 100%; height: auto; border-radius: 4px; background: white; }
+.download-button {
+  display: inline-block;
+  text-align: center;
+  background: var(--accent);
+  color: white;
+  border-radius: 6px;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.82rem;
+  text-decoration: none;
+}
+
+.notice {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 0 0 0.6rem;
+}
+
+@media (max-width: 480px) {
+  body { padding: 0 0.75rem 2rem; }
+  .card { padding: 1rem; }
+  #upload-form { flex-wrap: wrap; }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --border: #3a3c40;
+    --bg-card: #1e1f22;
+    --bg-page: #121314;
+    --text-muted: #9a9da3;
+  }
+  body { color: #e7e8ea; }
+  th { background: #262830; }
+  .error-banner { background: #3a2222; color: #ff9d9d; border-color: #6a3535; }
+}

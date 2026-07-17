@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>Excel2Dashboard — Pro</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>Excel2Dashboard <span class="badge">Pro</span></h1>
+    <p class="subtitle">엑셀/CSV를 올리면 열 타입을 판별하고 기술통계·차트·집계·피벗을 보여줍니다. 업로드한 파일과 태그, 저장한 분석은 서버에 계속 남아 다시 불러올 수 있습니다.</p>
+  </header>
+
+  <main>
+    <section id="dataset-list-section" class="card">
+      <h2>저장된 데이터셋</h2>
+      <div class="builder-row">
+        <label>태그로 모아보기
+          <input type="text" id="dataset-tag-filter" placeholder="예: 매출" />
+        </label>
+        <button type="button" id="dataset-filter-button">필터</button>
+        <button type="button" id="dataset-filter-clear-button">전체보기</button>
+      </div>
+      <div class="table-scroll">
+        <table id="dataset-list-table">
+          <thead>
+            <tr><th>파일명</th><th>태그</th><th>업로드일</th><th>행/열</th><th></th><th></th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="upload-section" class="card">
+      <form id="upload-form">
+        <input type="file" id="file-input" name="file" accept=".xlsx,.xls,.csv" required />
+        <input type="text" id="tags-input" placeholder="태그(콤마로 구분, 예: 매출,2024년)" />
+        <button type="submit" id="upload-button">업로드</button>
+      </form>
+      <div id="upload-status"></div>
+    </section>
+
+    <div id="error-banner" class="error-banner hidden"></div>
+
+    <section id="dashboard" class="hidden">
+      <section class="card" id="summary-card">
+        <h2>요약</h2>
+        <div id="summary-content"></div>
+      </section>
+
+      <section class="card" id="types-card">
+        <h2>열 타입</h2>
+        <div class="table-scroll">
+          <table id="types-table">
+            <thead>
+              <tr><th>열 이름</th><th>타입</th><th>결측률</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card" id="stats-card">
+        <h2>기술통계</h2>
+        <div id="stats-content"></div>
+      </section>
+
+      <section class="card" id="charts-card">
+        <h2>차트</h2>
+
+        <h3>추천 차트</h3>
+        <div id="recommendation-list" class="chip-row"></div>
+
+        <h3>직접 만들기</h3>
+        <div class="builder-row">
+          <select id="chart-type-select">
+            <option value="histogram">히스토그램</option>
+            <option value="bar">막대</option>
+            <option value="line">꺾은선</option>
+            <option value="scatter">산점도</option>
+            <option value="heatmap">상관 히트맵</option>
+          </select>
+          <label id="chart-x-wrap">X축
+            <select id="chart-x-select"></select>
+          </label>
+          <label id="chart-y-wrap">Y축
+            <select id="chart-y-select"></select>
+          </label>
+          <button id="chart-build-button" type="button">차트 만들기</button>
+        </div>
+        <div id="chart-builder-error" class="error-banner hidden"></div>
+
+        <div id="chart-grid" class="chart-grid"></div>
+      </section>
+
+      <section class="card" id="aggregate-card">
+        <h2>그룹 집계</h2>
+        <div class="builder-row">
+          <label>그룹 기준1
+            <select id="agg-group1-select"></select>
+          </label>
+          <label>그룹 기준2(선택)
+            <select id="agg-group2-select"><option value="">없음</option></select>
+          </label>
+          <label>값 열
+            <select id="agg-value-select"></select>
+          </label>
+          <label>집계함수
+            <select id="agg-func-select">
+              <option value="sum">합계</option>
+              <option value="mean">평균</option>
+              <option value="count">개수</option>
+              <option value="min">최소</option>
+              <option value="max">최대</option>
+            </select>
+          </label>
+          <button id="agg-build-button" type="button">집계하기</button>
+        </div>
+        <div id="aggregate-error" class="error-banner hidden"></div>
+        <div id="aggregate-result"></div>
+      </section>
+
+      <section class="card" id="pivot-card">
+        <h2>피벗</h2>
+        <div class="builder-row">
+          <label>행
+            <select id="pivot-rows-select"></select>
+          </label>
+          <label>열
+            <select id="pivot-columns-select"></select>
+          </label>
+          <label>값
+            <select id="pivot-value-select"></select>
+          </label>
+          <label>집계함수
+            <select id="pivot-func-select">
+              <option value="sum">합계</option>
+              <option value="mean">평균</option>
+              <option value="count">개수</option>
+              <option value="min">최소</option>
+              <option value="max">최대</option>
+            </select>
+          </label>
+          <button id="pivot-build-button" type="button">피벗 만들기</button>
+        </div>
+        <div id="pivot-error" class="error-banner hidden"></div>
+        <div id="pivot-result"></div>
+      </section>
+
+      <section class="card" id="saved-analyses-card">
+        <h2>저장된 분석</h2>
+        <div class="table-scroll">
+          <table id="saved-analyses-table">
+            <thead>
+              <tr><th>제목</th><th>종류</th><th>저장일</th><th></th><th></th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="saved-analysis-view"></div>
+      </section>
+
+      <section class="card" id="preview-card">
+        <h2>미리보기 (상위 20행)</h2>
+        <div class="table-scroll">
+          <table id="preview-table">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
