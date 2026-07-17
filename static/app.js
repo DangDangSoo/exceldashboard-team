@@ -13,7 +13,11 @@ const AGG_LABEL = { sum: "합계", mean: "평균", count: "개수", min: "최소
 const CATEGORY_DTYPES = ["categorical", "boolean"];
 const KIND_LABEL = { chart: "차트", aggregate: "그룹집계", pivot: "피벗" };
 
-let state = { datasetId: null, dataset: null };
+let state = { datasetId: null, dataset: null, currentUsername: null };
+
+function isOwner(ownerUsername) {
+  return ownerUsername === state.currentUsername;
+}
 
 const el = (id) => document.getElementById(id);
 
@@ -88,6 +92,7 @@ function renderSummary(dataset) {
       <div class="summary-item"><div class="label">파일명</div><div class="value">${escapeHtml(dataset.filename)}</div></div>
       <div class="summary-item"><div class="label">행 수</div><div class="value">${dataset.row_count.toLocaleString()}</div></div>
       <div class="summary-item"><div class="label">열 수</div><div class="value">${dataset.col_count.toLocaleString()}</div></div>
+      <div class="summary-item"><div class="label">업로드한 사람</div><div class="value">${escapeHtml(dataset.owner_username)}</div></div>
     </div>
   `;
 }
@@ -95,6 +100,7 @@ function renderSummary(dataset) {
 function renderTypesTable(dataset) {
   const tbody = document.querySelector("#types-table tbody");
   tbody.innerHTML = "";
+  const editable = isOwner(dataset.owner_username);
   for (const col of dataset.columns) {
     const tr = document.createElement("tr");
 
@@ -102,16 +108,20 @@ function renderTypesTable(dataset) {
     nameTd.textContent = col.name;
 
     const typeTd = document.createElement("td");
-    const select = document.createElement("select");
-    for (const opt of DTYPE_OPTIONS) {
-      const optionEl = document.createElement("option");
-      optionEl.value = opt;
-      optionEl.textContent = DTYPE_LABEL[opt];
-      if (opt === col.dtype) optionEl.selected = true;
-      select.appendChild(optionEl);
+    if (editable) {
+      const select = document.createElement("select");
+      for (const opt of DTYPE_OPTIONS) {
+        const optionEl = document.createElement("option");
+        optionEl.value = opt;
+        optionEl.textContent = DTYPE_LABEL[opt];
+        if (opt === col.dtype) optionEl.selected = true;
+        select.appendChild(optionEl);
+      }
+      select.addEventListener("change", () => correctColumnType(col.name, select.value));
+      typeTd.appendChild(select);
+    } else {
+      typeTd.textContent = DTYPE_LABEL[col.dtype];
     }
-    select.addEventListener("change", () => correctColumnType(col.name, select.value));
-    typeTd.appendChild(select);
 
     const missingTd = document.createElement("td");
     missingTd.textContent = `${(col.missing_rate * 100).toFixed(1)}%`;
@@ -232,7 +242,7 @@ function renderDatasetList(list) {
   if (list.length === 0) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 5;
+    td.colSpan = 7;
     td.textContent = "저장된 데이터셋이 없습니다.";
     tr.appendChild(td);
     tbody.appendChild(tr);
@@ -241,20 +251,28 @@ function renderDatasetList(list) {
 
   for (const item of list) {
     const tr = document.createElement("tr");
+    const mine = isOwner(item.owner_username);
 
     const nameTd = document.createElement("td");
     nameTd.textContent = item.filename;
 
+    const ownerTd = document.createElement("td");
+    ownerTd.textContent = item.owner_username;
+
     const tagsTd = document.createElement("td");
-    const tagsInput = document.createElement("input");
-    tagsInput.type = "text";
-    tagsInput.value = item.tags.join(", ");
-    tagsInput.placeholder = "태그(콤마로 구분)";
-    const tagsSaveButton = document.createElement("button");
-    tagsSaveButton.type = "button";
-    tagsSaveButton.textContent = "태그 저장";
-    tagsSaveButton.addEventListener("click", () => saveDatasetTags(item.id, tagsInput.value));
-    tagsTd.append(tagsInput, tagsSaveButton);
+    if (mine) {
+      const tagsInput = document.createElement("input");
+      tagsInput.type = "text";
+      tagsInput.value = item.tags.join(", ");
+      tagsInput.placeholder = "태그(콤마로 구분)";
+      const tagsSaveButton = document.createElement("button");
+      tagsSaveButton.type = "button";
+      tagsSaveButton.textContent = "태그 저장";
+      tagsSaveButton.addEventListener("click", () => saveDatasetTags(item.id, tagsInput.value));
+      tagsTd.append(tagsInput, tagsSaveButton);
+    } else {
+      tagsTd.textContent = item.tags.join(", ") || "-";
+    }
 
     const uploadedTd = document.createElement("td");
     uploadedTd.textContent = new Date(item.uploaded_at).toLocaleString();
@@ -270,13 +288,15 @@ function renderDatasetList(list) {
     openTd.appendChild(openButton);
 
     const deleteTd = document.createElement("td");
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.textContent = "삭제";
-    deleteButton.addEventListener("click", () => deleteDataset(item.id));
-    deleteTd.appendChild(deleteButton);
+    if (mine) {
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.textContent = "삭제";
+      deleteButton.addEventListener("click", () => deleteDataset(item.id));
+      deleteTd.appendChild(deleteButton);
+    }
 
-    tr.append(nameTd, tagsTd, uploadedTd, sizeTd, openTd, deleteTd);
+    tr.append(nameTd, ownerTd, tagsTd, uploadedTd, sizeTd, openTd, deleteTd);
     tbody.appendChild(tr);
   }
 }
@@ -344,6 +364,7 @@ async function checkAuth() {
 }
 
 function showLoggedIn(user) {
+  state.currentUsername = user.username;
   el("auth-section").classList.add("hidden");
   el("app-content").classList.remove("hidden");
   el("user-info").classList.remove("hidden");
@@ -352,6 +373,7 @@ function showLoggedIn(user) {
 }
 
 function showLoggedOut() {
+  state.currentUsername = null;
   el("auth-section").classList.remove("hidden");
   el("app-content").classList.add("hidden");
   el("user-info").classList.add("hidden");
@@ -533,9 +555,10 @@ function addChartCard(blob, spec, label) {
   downloadLink.className = "download-button";
   downloadLink.textContent = "PNG 다운로드";
 
-  const saveButton = createSaveAnalysisButton("chart", spec, label);
-
-  card.append(title, img, downloadLink, saveButton);
+  card.append(title, img, downloadLink);
+  if (isOwner(state.dataset.owner_username)) {
+    card.appendChild(createSaveAnalysisButton("chart", spec, label));
+  }
   el("chart-grid").prepend(card);
 }
 
@@ -805,7 +828,7 @@ function appendChartImage(container, blob, filename, saveInfo) {
   link.textContent = "PNG 다운로드";
 
   wrap.append(img, link);
-  if (saveInfo) {
+  if (saveInfo && isOwner(state.dataset.owner_username)) {
     wrap.appendChild(createSaveAnalysisButton(saveInfo.kind, saveInfo.spec, saveInfo.label));
   }
   container.appendChild(wrap);
@@ -889,11 +912,13 @@ function renderSavedAnalysesList(list) {
     viewTd.appendChild(viewButton);
 
     const deleteTd = document.createElement("td");
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.textContent = "삭제";
-    deleteButton.addEventListener("click", () => deleteAnalysis(item.id));
-    deleteTd.appendChild(deleteButton);
+    if (isOwner(state.dataset.owner_username)) {
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.textContent = "삭제";
+      deleteButton.addEventListener("click", () => deleteAnalysis(item.id));
+      deleteTd.appendChild(deleteButton);
+    }
 
     tr.append(titleTd, kindTd, createdTd, viewTd, deleteTd);
     tbody.appendChild(tr);

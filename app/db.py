@@ -15,28 +15,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = PROJECT_ROOT / "data" / "app.db"
 
 _SCHEMA = """
-CREATE TABLE IF NOT EXISTS datasets (
-    id TEXT PRIMARY KEY,
-    filename TEXT NOT NULL,
-    file_path TEXT NOT NULL,
-    row_count INTEGER NOT NULL,
-    col_count INTEGER NOT NULL,
-    columns_json TEXT NOT NULL,
-    uploaded_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS dataset_tags (
-    dataset_id TEXT NOT NULL REFERENCES datasets(id),
-    tag TEXT NOT NULL,
-    PRIMARY KEY (dataset_id, tag)
-);
-CREATE TABLE IF NOT EXISTS saved_analyses (
-    id TEXT PRIMARY KEY,
-    dataset_id TEXT NOT NULL REFERENCES datasets(id),
-    kind TEXT NOT NULL,
-    title TEXT NOT NULL,
-    spec_json TEXT NOT NULL,
-    created_at TEXT NOT NULL
-);
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     username TEXT UNIQUE NOT NULL,
@@ -52,6 +30,29 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS datasets (
+    id TEXT PRIMARY KEY,
+    filename TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    row_count INTEGER NOT NULL,
+    col_count INTEGER NOT NULL,
+    columns_json TEXT NOT NULL,
+    uploaded_at TEXT NOT NULL,
+    owner_id TEXT NOT NULL REFERENCES users(id)
+);
+CREATE TABLE IF NOT EXISTS dataset_tags (
+    dataset_id TEXT NOT NULL REFERENCES datasets(id),
+    tag TEXT NOT NULL,
+    PRIMARY KEY (dataset_id, tag)
+);
+CREATE TABLE IF NOT EXISTS saved_analyses (
+    id TEXT PRIMARY KEY,
+    dataset_id TEXT NOT NULL REFERENCES datasets(id),
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    spec_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
 );
 """
 
@@ -97,16 +98,17 @@ def insert_dataset(
     columns: list[ColumnMeta],
     uploaded_at: str,
     tags: list[str],
+    owner_id: str,
 ) -> None:
     columns_json = json.dumps([c.model_dump() for c in columns])
     normalized_tags = normalize_tags(tags)
     with get_connection() as conn:
         conn.execute(
             """
-            INSERT INTO datasets (id, filename, file_path, row_count, col_count, columns_json, uploaded_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO datasets (id, filename, file_path, row_count, col_count, columns_json, uploaded_at, owner_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (dataset_id, filename, file_path, row_count, col_count, columns_json, uploaded_at),
+            (dataset_id, filename, file_path, row_count, col_count, columns_json, uploaded_at, owner_id),
         )
         conn.executemany(
             "INSERT INTO dataset_tags (dataset_id, tag) VALUES (?, ?)",
@@ -116,7 +118,14 @@ def insert_dataset(
 
 def get_dataset(dataset_id: str) -> dict | None:
     with get_connection() as conn:
-        row = conn.execute("SELECT * FROM datasets WHERE id = ?", (dataset_id,)).fetchone()
+        row = conn.execute(
+            """
+            SELECT d.*, u.username AS owner_username FROM datasets d
+            JOIN users u ON u.id = d.owner_id
+            WHERE d.id = ?
+            """,
+            (dataset_id,),
+        ).fetchone()
         return _row_to_dataset_dict(row) if row is not None else None
 
 
@@ -152,7 +161,8 @@ def list_datasets(tag: str | None = None) -> list[dict]:
                 return []
             rows = conn.execute(
                 """
-                SELECT DISTINCT d.* FROM datasets d
+                SELECT DISTINCT d.*, u.username AS owner_username FROM datasets d
+                JOIN users u ON u.id = d.owner_id
                 JOIN dataset_tags t ON t.dataset_id = d.id
                 WHERE t.tag = ?
                 ORDER BY d.uploaded_at DESC
@@ -160,7 +170,13 @@ def list_datasets(tag: str | None = None) -> list[dict]:
                 (normalized[0],),
             ).fetchall()
         else:
-            rows = conn.execute("SELECT * FROM datasets ORDER BY uploaded_at DESC").fetchall()
+            rows = conn.execute(
+                """
+                SELECT d.*, u.username AS owner_username FROM datasets d
+                JOIN users u ON u.id = d.owner_id
+                ORDER BY d.uploaded_at DESC
+                """
+            ).fetchall()
 
     result = []
     for row in rows:

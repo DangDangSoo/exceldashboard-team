@@ -24,6 +24,7 @@ class Dataset(BaseModel):
     columns: list[ColumnMeta]
     preview: list[dict]
     tags: list[str] = Field(default_factory=list)
+    owner_username: str
 
 
 class DatasetSummary(BaseModel):
@@ -34,6 +35,7 @@ class DatasetSummary(BaseModel):
     row_count: int
     col_count: int
     uploaded_at: str
+    owner_username: str
 
 
 class TagsUpdateRequest(BaseModel):

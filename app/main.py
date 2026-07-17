@@ -166,6 +166,7 @@ async def upload(file: UploadFile, tags: str | None = Form(None), current_user: 
         columns,
         uploaded_at,
         tag_list,
+        current_user["id"],
     )
 
     return Dataset(
@@ -176,11 +177,18 @@ async def upload(file: UploadFile, tags: str | None = Form(None), current_user: 
         columns=columns,
         preview=dataframe_preview(df, PREVIEW_ROWS),
         tags=db.get_tags(dataset_id),
+        owner_username=current_user["username"],
     )
 
 
 @app.put("/api/datasets/{dataset_id}/column-type", response_model=Dataset)
 async def correct_column_type(dataset_id: str, body: TypeCorrectionRequest, current_user: dict = Depends(require_login)):
+    row = db.get_dataset(dataset_id)
+    if row is None:
+        raise AppError("데이터셋을 찾을 수 없습니다.", status_code=404)
+    if row["owner_id"] != current_user["id"]:
+        raise AppError("본인이 업로드한 데이터셋만 수정할 수 있습니다.", status_code=403)
+
     entry = session_store.get(dataset_id)
     if entry is None:
         raise AppError("세션에서 데이터셋을 찾을 수 없습니다. 새로고침 후 다시 업로드해주세요.", status_code=404)
@@ -205,6 +213,7 @@ async def correct_column_type(dataset_id: str, body: TypeCorrectionRequest, curr
         columns=updated_columns,
         preview=dataframe_preview(entry.df, PREVIEW_ROWS),
         tags=db.get_tags(dataset_id),
+        owner_username=row["owner_username"],
     )
 
 
@@ -238,6 +247,9 @@ def _load_or_reload_entry(dataset_id: str) -> SessionEntry:
 @app.get("/api/datasets/{dataset_id}", response_model=Dataset)
 async def get_dataset(dataset_id: str, current_user: dict = Depends(require_login)):
     entry = _load_or_reload_entry(dataset_id)
+    row = db.get_dataset(dataset_id)
+    if row is None:
+        raise AppError("데이터셋을 찾을 수 없습니다.", status_code=404)
     return Dataset(
         id=dataset_id,
         filename=entry.filename,
@@ -246,6 +258,7 @@ async def get_dataset(dataset_id: str, current_user: dict = Depends(require_logi
         columns=entry.columns,
         preview=dataframe_preview(entry.df, PREVIEW_ROWS),
         tags=db.get_tags(dataset_id),
+        owner_username=row["owner_username"],
     )
 
 
@@ -254,6 +267,8 @@ async def update_tags(dataset_id: str, body: TagsUpdateRequest, current_user: di
     row = db.get_dataset(dataset_id)
     if row is None:
         raise AppError("데이터셋을 찾을 수 없습니다.", status_code=404)
+    if row["owner_id"] != current_user["id"]:
+        raise AppError("본인이 업로드한 데이터셋만 수정할 수 있습니다.", status_code=403)
 
     db.set_tags(dataset_id, body.tags)
 
@@ -264,6 +279,7 @@ async def update_tags(dataset_id: str, body: TagsUpdateRequest, current_user: di
         row_count=row["row_count"],
         col_count=row["col_count"],
         uploaded_at=row["uploaded_at"],
+        owner_username=row["owner_username"],
     )
 
 
@@ -335,8 +351,11 @@ async def pivot_chart(dataset_id: str, spec: PivotSpec, current_user: dict = Dep
 
 @app.post("/api/datasets/{dataset_id}/analyses", response_model=SavedAnalysis)
 async def save_analysis(dataset_id: str, body: SaveAnalysisRequest, current_user: dict = Depends(require_login)):
-    if db.get_dataset(dataset_id) is None:
+    dataset_row = db.get_dataset(dataset_id)
+    if dataset_row is None:
         raise AppError("데이터셋을 찾을 수 없습니다.", status_code=404)
+    if dataset_row["owner_id"] != current_user["id"]:
+        raise AppError("본인이 업로드한 데이터셋에만 분석을 저장할 수 있습니다.", status_code=403)
 
     spec_cls = SPEC_MODEL_BY_KIND[body.kind]
     try:
@@ -389,8 +408,11 @@ async def reproduce_analysis(dataset_id: str, analysis_id: str, current_user: di
 
 @app.delete("/api/datasets/{dataset_id}", status_code=204)
 async def delete_dataset(dataset_id: str, current_user: dict = Depends(require_login)):
-    if db.get_dataset(dataset_id) is None:
+    row = db.get_dataset(dataset_id)
+    if row is None:
         raise AppError("데이터셋을 찾을 수 없습니다.", status_code=404)
+    if row["owner_id"] != current_user["id"]:
+        raise AppError("본인이 업로드한 데이터셋만 삭제할 수 있습니다.", status_code=403)
 
     db.delete_dataset(dataset_id)
     storage.delete_upload(dataset_id)
@@ -403,6 +425,10 @@ async def delete_analysis(dataset_id: str, analysis_id: str, current_user: dict 
     record = db.get_saved_analysis(analysis_id)
     if record is None or record["dataset_id"] != dataset_id:
         raise AppError("저장된 분석을 찾을 수 없습니다.", status_code=404)
+
+    dataset_row = db.get_dataset(dataset_id)
+    if dataset_row is None or dataset_row["owner_id"] != current_user["id"]:
+        raise AppError("본인이 업로드한 데이터셋의 분석만 삭제할 수 있습니다.", status_code=403)
 
     db.delete_saved_analysis(analysis_id)
     return Response(status_code=204)
