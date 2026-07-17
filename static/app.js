@@ -332,7 +332,86 @@ el("dataset-filter-clear-button").addEventListener("click", () => {
   loadDatasetList();
 });
 
-loadDatasetList();
+// --- 인증 ---
+
+async function checkAuth() {
+  try {
+    const user = await requestJSON("/api/auth/me");
+    showLoggedIn(user);
+  } catch (err) {
+    showLoggedOut();
+  }
+}
+
+function showLoggedIn(user) {
+  el("auth-section").classList.add("hidden");
+  el("app-content").classList.remove("hidden");
+  el("user-info").classList.remove("hidden");
+  el("user-info-name").textContent = `${user.username}님`;
+  loadDatasetList();
+}
+
+function showLoggedOut() {
+  el("auth-section").classList.remove("hidden");
+  el("app-content").classList.add("hidden");
+  el("user-info").classList.add("hidden");
+}
+
+function showAuthFormError(bannerId, message) {
+  const banner = el(bannerId);
+  banner.textContent = message;
+  banner.classList.remove("hidden");
+}
+
+el("login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  el("login-error").classList.add("hidden");
+  try {
+    const user = await requestJSON("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: el("login-username").value,
+        password: el("login-password").value,
+      }),
+    });
+    el("login-form").reset();
+    showLoggedIn(user);
+  } catch (err) {
+    showAuthFormError("login-error", err.message);
+  }
+});
+
+el("register-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  el("register-error").classList.add("hidden");
+  try {
+    const user = await requestJSON("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: el("register-username").value,
+        password: el("register-password").value,
+        invite_code: el("register-invite-code").value,
+      }),
+    });
+    el("register-form").reset();
+    showLoggedIn(user);
+  } catch (err) {
+    showAuthFormError("register-error", err.message);
+  }
+});
+
+el("logout-button").addEventListener("click", async () => {
+  try {
+    await requestJSON("/api/auth/logout", { method: "POST" });
+  } catch (err) {
+    // 로그아웃 요청이 실패해도 화면은 로그인 화면으로 되돌린다.
+  }
+  showLoggedOut();
+});
+
+checkAuth();
 
 function fmt(value) {
   return value === null || value === undefined ? "-" : value;

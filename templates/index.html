@@ -2,16 +2,40 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <title>Excel2Dashboard — Pro</title>
+  <title>Excel2Dashboard — Team</title>
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
   <header>
-    <h1>Excel2Dashboard <span class="badge">Pro</span></h1>
-    <p class="subtitle">엑셀/CSV를 올리면 열 타입을 판별하고 기술통계·차트·집계·피벗을 보여줍니다. 업로드한 파일과 태그, 저장한 분석은 서버에 계속 남아 다시 불러올 수 있습니다.</p>
+    <h1>Excel2Dashboard <span class="badge">Team</span></h1>
+    <p class="subtitle">엑셀/CSV를 올리면 열 타입을 판별하고 기술통계·차트·집계·피벗을 보여줍니다. 로그인한 팀원끼리 데이터를 함께 볼 수 있습니다.</p>
+    <div id="user-info" class="hidden">
+      <span id="user-info-name"></span>
+      <button type="button" id="logout-button">로그아웃</button>
+    </div>
   </header>
 
   <main>
+    <section id="auth-section" class="card">
+      <h2>로그인</h2>
+      <form id="login-form">
+        <input type="text" id="login-username" placeholder="아이디" required />
+        <input type="password" id="login-password" placeholder="비밀번호" required />
+        <button type="submit">로그인</button>
+      </form>
+      <div id="login-error" class="error-banner hidden"></div>
+
+      <h2>회원가입</h2>
+      <form id="register-form">
+        <input type="text" id="register-username" placeholder="아이디" required />
+        <input type="password" id="register-password" placeholder="비밀번호" required />
+        <input type="text" id="register-invite-code" placeholder="초대코드" required />
+        <button type="submit">회원가입</button>
+      </form>
+      <div id="register-error" class="error-banner hidden"></div>
+    </section>
+
+    <div id="app-content" class="hidden">
     <section id="dataset-list-section" class="card">
       <h2>저장된 데이터셋</h2>
       <div class="builder-row">
@@ -170,8 +194,9 @@
         </div>
       </section>
     </section>
+    </div>
   </main>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=team-day1"></script>
 </body>
 </html>

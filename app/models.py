@@ -171,3 +171,19 @@ class SavedAnalysis(BaseModel):
     title: str
     spec: dict
     created_at: str
+
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+    invite_code: str
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class UserPublic(BaseModel):
+    id: str
+    username: str

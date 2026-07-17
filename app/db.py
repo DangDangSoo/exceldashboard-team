@@ -37,7 +37,25 @@ CREATE TABLE IF NOT EXISTS saved_analyses (
     spec_json TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    token TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
+
+_DEFAULT_INVITE_CODE = "CHANGEME"
 
 
 def get_connection() -> sqlite3.Connection:
@@ -45,6 +63,12 @@ def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
+    # 최초 기동 시 기본 초대코드 생성. 이미 있으면(관리자가 터미널로 바꿔놨으면) 건드리지 않는다.
+    conn.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('invite_code', ?)",
+        (_DEFAULT_INVITE_CODE,),
+    )
+    conn.commit()
     return conn
 
 
@@ -197,3 +221,48 @@ def delete_dataset(dataset_id: str) -> None:
 def delete_saved_analysis(analysis_id: str) -> None:
     with get_connection() as conn:
         conn.execute("DELETE FROM saved_analyses WHERE id = ?", (analysis_id,))
+
+
+def create_user(user_id: str, username: str, password_hash: str, created_at: str) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)",
+            (user_id, username, password_hash, created_at),
+        )
+
+
+def get_user_by_username(username: str) -> dict | None:
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+        return dict(row) if row is not None else None
+
+
+def get_user_by_id(user_id: str) -> dict | None:
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        return dict(row) if row is not None else None
+
+
+def create_session(token: str, user_id: str, created_at: str, expires_at: str) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+            (token, user_id, created_at, expires_at),
+        )
+
+
+def get_session(token: str) -> dict | None:
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM sessions WHERE token = ?", (token,)).fetchone()
+        return dict(row) if row is not None else None
+
+
+def delete_session(token: str) -> None:
+    with get_connection() as conn:
+        conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+
+
+def get_setting(key: str) -> str | None:
+    with get_connection() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row is not None else None

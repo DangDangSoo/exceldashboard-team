@@ -3,16 +3,16 @@ FastAPI 라우터. 이음새 원칙 #1: 여기는 core 모듈 호출만 하고,
 파싱/타입판별/통계 로직 자체는 절대 여기 두지 않는다.
 """
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, Form, Request, Response, UploadFile
+from fastapi import Cookie, Depends, FastAPI, Form, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 
-from app import db, storage
+from app import auth, db, storage
 from app.core.aggregate import group_aggregate, pivot_table
 from app.core.charts import recommend_charts, render_aggregate_chart, render_chart, render_pivot_chart
 from app.core.errors import AppError
@@ -26,20 +26,25 @@ from app.models import (
     ChartSpec,
     Dataset,
     DatasetSummary,
+    LoginRequest,
     PivotResult,
     PivotSpec,
+    RegisterRequest,
     SaveAnalysisRequest,
     SavedAnalysis,
     StatsResponse,
     TagsUpdateRequest,
     TypeCorrectionRequest,
+    UserPublic,
 )
 from app.session_store import SessionEntry, session_store
 
 PREVIEW_ROWS = 20
 SPEC_MODEL_BY_KIND = {"chart": ChartSpec, "aggregate": AggregateSpec, "pivot": PivotSpec}
+SESSION_COOKIE_NAME = "session_token"
+SESSION_TTL_DAYS = 7
 
-app = FastAPI(title="Excel2Dashboard (Basic) — v1.0")
+app = FastAPI(title="Excel2Dashboard (Team) — v0.1")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
@@ -63,12 +68,85 @@ async def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
+def require_login(session_token: str | None = Cookie(default=None)) -> dict:
+    """로그인 여부만 확인한다(소유권 검증은 Day 2). 매 보호 라우트에 Depends로 주입."""
+    if session_token is None:
+        raise AppError("로그인이 필요합니다.", status_code=401)
+
+    session = db.get_session(session_token)
+    if session is None:
+        raise AppError("로그인이 필요합니다.", status_code=401)
+
+    if session["expires_at"] < datetime.now(timezone.utc).isoformat():
+        db.delete_session(session_token)
+        raise AppError("세션이 만료되었습니다. 다시 로그인해주세요.", status_code=401)
+
+    user = db.get_user_by_id(session["user_id"])
+    if user is None:
+        raise AppError("로그인이 필요합니다.", status_code=401)
+    return user
+
+
+def _issue_session(response: Response, user_id: str) -> None:
+    token = auth.generate_session_token()
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(days=SESSION_TTL_DAYS)
+    db.create_session(token, user_id, now.isoformat(), expires_at.isoformat())
+    response.set_cookie(
+        SESSION_COOKIE_NAME,
+        token,
+        max_age=SESSION_TTL_DAYS * 24 * 60 * 60,
+        httponly=True,
+        samesite="lax",
+    )
+
+
+@app.post("/api/auth/register", response_model=UserPublic)
+async def register(body: RegisterRequest, response: Response):
+    if body.invite_code != db.get_setting("invite_code"):
+        raise AppError("초대코드가 올바르지 않습니다.", status_code=400)
+
+    if db.get_user_by_username(body.username) is not None:
+        raise AppError("이미 사용 중인 아이디입니다.", status_code=400)
+
+    user_id = str(uuid.uuid4())
+    password_hash = auth.hash_password(body.password)
+    created_at = datetime.now(timezone.utc).isoformat()
+    db.create_user(user_id, body.username, password_hash, created_at)
+
+    _issue_session(response, user_id)  # 가입 직후 바로 로그인 상태로 만든다.
+    return UserPublic(id=user_id, username=body.username)
+
+
+@app.post("/api/auth/login", response_model=UserPublic)
+async def login(body: LoginRequest, response: Response):
+    user = db.get_user_by_username(body.username)
+    if user is None or not auth.verify_password(body.password, user["password_hash"]):
+        raise AppError("아이디 또는 비밀번호가 올바르지 않습니다.", status_code=401)
+
+    _issue_session(response, user["id"])
+    return UserPublic(id=user["id"], username=user["username"])
+
+
+@app.post("/api/auth/logout")
+async def logout(response: Response, session_token: str | None = Cookie(default=None)):
+    if session_token is not None:
+        db.delete_session(session_token)
+    response.delete_cookie(SESSION_COOKIE_NAME)
+    return Response(status_code=204)
+
+
+@app.get("/api/auth/me", response_model=UserPublic)
+async def me(current_user: dict = Depends(require_login)):
+    return UserPublic(id=current_user["id"], username=current_user["username"])
+
+
 def _split_tags(raw: str | None) -> list[str]:
     return raw.split(",") if raw else []
 
 
 @app.post("/api/upload", response_model=Dataset)
-async def upload(file: UploadFile, tags: str | None = Form(None)):
+async def upload(file: UploadFile, tags: str | None = Form(None), current_user: dict = Depends(require_login)):
     content = await file.read()
     df = parse_file(file.filename or "", content)
     columns = infer_types(df)
@@ -102,7 +180,7 @@ async def upload(file: UploadFile, tags: str | None = Form(None)):
 
 
 @app.put("/api/datasets/{dataset_id}/column-type", response_model=Dataset)
-async def correct_column_type(dataset_id: str, body: TypeCorrectionRequest):
+async def correct_column_type(dataset_id: str, body: TypeCorrectionRequest, current_user: dict = Depends(require_login)):
     entry = session_store.get(dataset_id)
     if entry is None:
         raise AppError("세션에서 데이터셋을 찾을 수 없습니다. 새로고침 후 다시 업로드해주세요.", status_code=404)
@@ -131,7 +209,7 @@ async def correct_column_type(dataset_id: str, body: TypeCorrectionRequest):
 
 
 @app.get("/api/datasets", response_model=list[DatasetSummary])
-async def list_datasets(tag: str | None = None):
+async def list_datasets(tag: str | None = None, current_user: dict = Depends(require_login)):
     rows = db.list_datasets(tag=tag)
     return [DatasetSummary(**row) for row in rows]
 
@@ -158,7 +236,7 @@ def _load_or_reload_entry(dataset_id: str) -> SessionEntry:
 
 
 @app.get("/api/datasets/{dataset_id}", response_model=Dataset)
-async def get_dataset(dataset_id: str):
+async def get_dataset(dataset_id: str, current_user: dict = Depends(require_login)):
     entry = _load_or_reload_entry(dataset_id)
     return Dataset(
         id=dataset_id,
@@ -172,7 +250,7 @@ async def get_dataset(dataset_id: str):
 
 
 @app.put("/api/datasets/{dataset_id}/tags", response_model=DatasetSummary)
-async def update_tags(dataset_id: str, body: TagsUpdateRequest):
+async def update_tags(dataset_id: str, body: TagsUpdateRequest, current_user: dict = Depends(require_login)):
     row = db.get_dataset(dataset_id)
     if row is None:
         raise AppError("데이터셋을 찾을 수 없습니다.", status_code=404)
@@ -190,7 +268,7 @@ async def update_tags(dataset_id: str, body: TagsUpdateRequest):
 
 
 @app.get("/api/datasets/{dataset_id}/stats", response_model=StatsResponse)
-async def get_stats(dataset_id: str):
+async def get_stats(dataset_id: str, current_user: dict = Depends(require_login)):
     entry = session_store.get(dataset_id)
     if entry is None:
         raise AppError("세션에서 데이터셋을 찾을 수 없습니다. 새로고침 후 다시 업로드해주세요.", status_code=404)
@@ -213,27 +291,27 @@ def _get_entry_or_404(dataset_id: str) -> SessionEntry:
 
 
 @app.get("/api/datasets/{dataset_id}/chart-recommendations", response_model=list[ChartRecommendation])
-async def chart_recommendations(dataset_id: str):
+async def chart_recommendations(dataset_id: str, current_user: dict = Depends(require_login)):
     entry = _get_entry_or_404(dataset_id)
     return recommend_charts(entry.columns)
 
 
 @app.post("/api/datasets/{dataset_id}/chart")
-async def create_chart(dataset_id: str, spec: ChartSpec):
+async def create_chart(dataset_id: str, spec: ChartSpec, current_user: dict = Depends(require_login)):
     entry = _get_entry_or_404(dataset_id)
     png_bytes = render_chart(entry.df, entry.columns, spec)
     return Response(content=png_bytes, media_type="image/png")
 
 
 @app.post("/api/datasets/{dataset_id}/aggregate", response_model=AggregateResult)
-async def aggregate(dataset_id: str, spec: AggregateSpec):
+async def aggregate(dataset_id: str, spec: AggregateSpec, current_user: dict = Depends(require_login)):
     entry = _get_entry_or_404(dataset_id)
     result = group_aggregate(entry.df, entry.columns, spec)
     return AggregateResult(**result)
 
 
 @app.post("/api/datasets/{dataset_id}/aggregate/chart")
-async def aggregate_chart(dataset_id: str, spec: AggregateSpec):
+async def aggregate_chart(dataset_id: str, spec: AggregateSpec, current_user: dict = Depends(require_login)):
     entry = _get_entry_or_404(dataset_id)
     result = group_aggregate(entry.df, entry.columns, spec)
     png_bytes = render_aggregate_chart(result)
@@ -241,14 +319,14 @@ async def aggregate_chart(dataset_id: str, spec: AggregateSpec):
 
 
 @app.post("/api/datasets/{dataset_id}/pivot", response_model=PivotResult)
-async def pivot(dataset_id: str, spec: PivotSpec):
+async def pivot(dataset_id: str, spec: PivotSpec, current_user: dict = Depends(require_login)):
     entry = _get_entry_or_404(dataset_id)
     result = pivot_table(entry.df, entry.columns, spec)
     return PivotResult(**result)
 
 
 @app.post("/api/datasets/{dataset_id}/pivot/chart")
-async def pivot_chart(dataset_id: str, spec: PivotSpec):
+async def pivot_chart(dataset_id: str, spec: PivotSpec, current_user: dict = Depends(require_login)):
     entry = _get_entry_or_404(dataset_id)
     result = pivot_table(entry.df, entry.columns, spec)
     png_bytes = render_pivot_chart(result)
@@ -256,7 +334,7 @@ async def pivot_chart(dataset_id: str, spec: PivotSpec):
 
 
 @app.post("/api/datasets/{dataset_id}/analyses", response_model=SavedAnalysis)
-async def save_analysis(dataset_id: str, body: SaveAnalysisRequest):
+async def save_analysis(dataset_id: str, body: SaveAnalysisRequest, current_user: dict = Depends(require_login)):
     if db.get_dataset(dataset_id) is None:
         raise AppError("데이터셋을 찾을 수 없습니다.", status_code=404)
 
@@ -282,12 +360,12 @@ async def save_analysis(dataset_id: str, body: SaveAnalysisRequest):
 
 
 @app.get("/api/datasets/{dataset_id}/analyses", response_model=list[SavedAnalysis])
-async def list_analyses(dataset_id: str):
+async def list_analyses(dataset_id: str, current_user: dict = Depends(require_login)):
     return [SavedAnalysis(**row) for row in db.list_saved_analyses(dataset_id)]
 
 
 @app.get("/api/datasets/{dataset_id}/analyses/{analysis_id}/chart")
-async def reproduce_analysis(dataset_id: str, analysis_id: str):
+async def reproduce_analysis(dataset_id: str, analysis_id: str, current_user: dict = Depends(require_login)):
     entry = _load_or_reload_entry(dataset_id)
 
     record = db.get_saved_analysis(analysis_id)
@@ -310,7 +388,7 @@ async def reproduce_analysis(dataset_id: str, analysis_id: str):
 
 
 @app.delete("/api/datasets/{dataset_id}", status_code=204)
-async def delete_dataset(dataset_id: str):
+async def delete_dataset(dataset_id: str, current_user: dict = Depends(require_login)):
     if db.get_dataset(dataset_id) is None:
         raise AppError("데이터셋을 찾을 수 없습니다.", status_code=404)
 
@@ -321,7 +399,7 @@ async def delete_dataset(dataset_id: str):
 
 
 @app.delete("/api/datasets/{dataset_id}/analyses/{analysis_id}", status_code=204)
-async def delete_analysis(dataset_id: str, analysis_id: str):
+async def delete_analysis(dataset_id: str, analysis_id: str, current_user: dict = Depends(require_login)):
     record = db.get_saved_analysis(analysis_id)
     if record is None or record["dataset_id"] != dataset_id:
         raise AppError("저장된 분석을 찾을 수 없습니다.", status_code=404)
