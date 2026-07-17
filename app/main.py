@@ -35,6 +35,7 @@ from app.models import (
     StatsResponse,
     TagsUpdateRequest,
     TypeCorrectionRequest,
+    UsernameAvailability,
     UserPublic,
 )
 from app.session_store import SessionEntry, session_store
@@ -99,6 +100,11 @@ def _issue_session(response: Response, user_id: str) -> None:
         httponly=True,
         samesite="lax",
     )
+
+
+@app.get("/api/auth/check-username", response_model=UsernameAvailability)
+async def check_username(username: str):
+    return UsernameAvailability(available=db.get_user_by_username(username) is None)
 
 
 @app.post("/api/auth/register", response_model=UserPublic)

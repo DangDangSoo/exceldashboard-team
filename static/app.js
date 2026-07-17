@@ -404,9 +404,43 @@ el("login-form").addEventListener("submit", async (e) => {
   }
 });
 
+let usernameCheckTimeout = null;
+
+el("register-username").addEventListener("input", () => {
+  const status = el("username-check-status");
+  const username = el("register-username").value.trim();
+  clearTimeout(usernameCheckTimeout);
+
+  if (!username) {
+    status.textContent = "";
+    status.className = "hint";
+    return;
+  }
+
+  status.textContent = "확인 중...";
+  status.className = "hint";
+
+  usernameCheckTimeout = setTimeout(async () => {
+    try {
+      const result = await requestJSON(`/api/auth/check-username?username=${encodeURIComponent(username)}`);
+      if (el("register-username").value.trim() !== username) return; // 확인하는 사이 입력값이 바뀌었으면 무시
+      status.textContent = result.available ? "사용 가능한 아이디입니다." : "이미 사용 중인 아이디입니다.";
+      status.className = result.available ? "hint hint-ok" : "hint hint-taken";
+    } catch (err) {
+      status.textContent = "";
+    }
+  }, 400);
+});
+
 el("register-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   el("register-error").classList.add("hidden");
+
+  if (el("register-password").value !== el("register-password-confirm").value) {
+    showAuthFormError("register-error", "비밀번호가 일치하지 않습니다.");
+    return;
+  }
+
   try {
     const user = await requestJSON("/api/auth/register", {
       method: "POST",
@@ -418,6 +452,7 @@ el("register-form").addEventListener("submit", async (e) => {
       }),
     });
     el("register-form").reset();
+    el("username-check-status").textContent = "";
     showLoggedIn(user);
   } catch (err) {
     showAuthFormError("register-error", err.message);

@@ -6,6 +6,7 @@
   --text-muted: #6b6f76;
   --accent: #3a6df0;
   --danger: #d64545;
+  --success: #2e9e5b;
 }
 
 * { box-sizing: border-box; }
@@ -65,6 +66,9 @@ main {
 #upload-form { display: flex; gap: 0.75rem; align-items: center; }
 #login-form, #register-form { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem; }
 #login-form input, #register-form input { padding: 0.45rem 0.6rem; border: 1px solid var(--border); border-radius: 6px; }
+.hint { font-size: 0.8rem; color: var(--text-muted); }
+.hint-ok { color: var(--success); }
+.hint-taken { color: var(--danger); }
 button {
   background: var(--accent);
   color: white;

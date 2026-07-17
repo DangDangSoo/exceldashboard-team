@@ -189,3 +189,7 @@ class LoginRequest(BaseModel):
 class UserPublic(BaseModel):
     id: str
     username: str
+
+
+class UsernameAvailability(BaseModel):
+    available: bool
